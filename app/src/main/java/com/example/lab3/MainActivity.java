@@ -1,130 +1,177 @@
 package com.example.lab3;
 
+import android.Manifest;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
-import android.net.Uri;
+import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.text.TextUtils;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
-import android.view.Menu;
-import android.view.MenuItem;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
-import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.lifecycle.ViewModelProvider;
-import androidx.recyclerview.widget.ItemTouchHelper;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.core.app.ActivityCompat;
+import androidx.lifecycle.LiveData;
 
-import com.example.lab3.data.entity.Phone;
-import com.example.lab3.data.viewmodel.PhoneViewModel;
-import com.example.lab3.databinding.ActivityMainBinding;
-import com.example.lab3.ui.PhoneListAdapter;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import android.os.Handler;
+import android.os.Looper;
+
+import javax.net.ssl.HttpsURLConnection;
+import java.io.IOException;
+import java.net.URL;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final int ADD_PHONE_REQUEST  = 1;
-    private static final int EDIT_PHONE_REQUEST = 2;
+    private EditText urlInput;
+    private TextView sizeText;
+    private TextView typeText;
+    private TextView progressText;
+    private ProgressBar progressBar;
 
-    private ActivityMainBinding binding;
-    private PhoneViewModel phoneVM;
-    private PhoneListAdapter adapter;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
+    private final Handler handler = new Handler(Looper.getMainLooper());
 
-    @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        getMenuInflater().inflate(R.menu.main_menu, menu);
-        return true;
-    }
+    private boolean serviceBound = false;
+    private LiveData<ProgressEvent> progressLiveData;
+    private ProgressEvent lastProgress;
 
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int id = item.getItemId();
-        if (id == R.id.action_delete_all) {
-            phoneVM.deleteAll();
-            Toast.makeText(this, R.string.all_deleted_toast, Toast.LENGTH_SHORT).show();
-            return true;
-        } else if (id == R.id.action_file_info) {
-            startActivity(new Intent(this, com.example.lab3.network.FileInfoActivity.class));
-            return true;
+    private final ServiceConnection serviceConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName name, IBinder service) {
+            serviceBound = true;
+            DownloadService.DownloadBinder binder = (DownloadService.DownloadBinder) service;
+            progressLiveData = binder.getProgressEvent();
+            progressLiveData.observe(MainActivity.this, MainActivity.this::updateProgress);
         }
-        return super.onOptionsItemSelected(item);
-    }
+
+        @Override
+        public void onServiceDisconnected(ComponentName name) {
+            if (progressLiveData != null) progressLiveData.removeObservers(MainActivity.this);
+            serviceBound = false;
+        }
+    };
+
+    private final ActivityResultLauncher<String> requestPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+                if (granted) startDownload();
+                else Toast.makeText(this, "Brak uprawnień", Toast.LENGTH_SHORT).show();
+            });
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        binding = ActivityMainBinding.inflate(getLayoutInflater());
-        setContentView(binding.getRoot());
-        setSupportActionBar(binding.topAppBar);
+        setContentView(R.layout.activity_main);
+        urlInput = findViewById(R.id.editUrl);
+        sizeText = findViewById(R.id.textSize);
+        typeText = findViewById(R.id.textType);
+        progressText = findViewById(R.id.textProgress);
+        progressBar = findViewById(R.id.progressBar);
+        Button btnInfo = findViewById(R.id.btnInfo);
+        Button btnDownload = findViewById(R.id.btnDownload);
 
-        // adapter z listenerem kliknięcia w wiersz
-        adapter = new PhoneListAdapter(this, phone -> {
-            Intent intent = new Intent(MainActivity.this, AddPhoneActivity.class);
-            intent.putExtra("EXTRA_ID", phone.getId());
-            intent.putExtra("EXTRA_MANUFACTURER", phone.getMaker());
-            intent.putExtra("EXTRA_MODEL", phone.getModel());
-            intent.putExtra("EXTRA_VERSION", phone.getAndroidVersion());
-            intent.putExtra("EXTRA_WEBSITE", phone.getWebSite());
-            startActivityForResult(intent, EDIT_PHONE_REQUEST);
-        });
+        if (savedInstanceState != null) {
+            lastProgress = savedInstanceState.getParcelable("progress");
+            if (lastProgress != null) updateProgress(lastProgress);
+        }
 
-        binding.phoneListRecyclerView.setAdapter(adapter);
-        binding.phoneListRecyclerView.setLayoutManager(new LinearLayoutManager(this));
+        btnInfo.setOnClickListener(v -> fetchInfo());
+        btnDownload.setOnClickListener(v -> checkPermissionAndDownload());
 
-        phoneVM = new ViewModelProvider(this).get(PhoneViewModel.class);
-        phoneVM.getAllPhones().observe(this, adapter::setPhones);
-
-        // Swipe to delete
-        new ItemTouchHelper(new ItemTouchHelper.SimpleCallback(0,
-                ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
-            @Override public boolean onMove(@NonNull RecyclerView rv,
-                                            @NonNull RecyclerView.ViewHolder vh,
-                                            @NonNull RecyclerView.ViewHolder target) {
-                return false;
-            }
-            @Override public void onSwiped(@NonNull RecyclerView.ViewHolder vh, int dir) {
-                int pos = vh.getAdapterPosition();
-                Phone p = adapter.getPhoneAtPosition(pos);
-                phoneVM.delete(p);
-                Toast.makeText(MainActivity.this,
-                        "Usunięto telefon", Toast.LENGTH_SHORT).show();
-            }
-        }).attachToRecyclerView(binding.phoneListRecyclerView);
-
-        // dodawanie
-        binding.fabMain.setOnClickListener(v ->
-                startActivityForResult(
-                        new Intent(MainActivity.this, AddPhoneActivity.class),
-                        ADD_PHONE_REQUEST));
+        Intent serviceIntent = new Intent(this, DownloadService.class);
+        bindService(serviceIntent, serviceConnection, Context.BIND_AUTO_CREATE);
     }
 
     @Override
-    protected void onActivityResult(int requestCode, int resultCode,
-                                    @Nullable Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (resultCode != RESULT_OK || data == null) return;
-
-        String manuf = data.getStringExtra("EXTRA_MANUFACTURER");
-        String model = data.getStringExtra("EXTRA_MODEL");
-        String ver   = data.getStringExtra("EXTRA_VERSION");
-        String www   = data.getStringExtra("EXTRA_WEBSITE");
-
-        if (requestCode == ADD_PHONE_REQUEST) {
-            Phone newPhone = new Phone(manuf, model, ver, www);
-            phoneVM.insert(newPhone);
-            Toast.makeText(this, "Dodano telefon", Toast.LENGTH_SHORT).show();
+    protected void onDestroy() {
+        super.onDestroy();
+        if (serviceBound) {
+            progressLiveData.removeObservers(this);
+            unbindService(serviceConnection);
         }
-        else if (requestCode == EDIT_PHONE_REQUEST) {
-            long id = data.getLongExtra("EXTRA_ID", -1);
-            if (id == -1) {
-                Toast.makeText(this,
-                        "Błąd aktualizacji: brak ID", Toast.LENGTH_SHORT).show();
-                return;
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        if (lastProgress != null)
+            outState.putParcelable("progress", lastProgress);
+    }
+
+    private void fetchInfo() {
+        final String url = urlInput.getText().toString().trim();
+        if (TextUtils.isEmpty(url) || !url.startsWith("https://")) {
+            Toast.makeText(this, R.string.invalid_url_toast, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        sizeText.setText("");
+        typeText.setText("");
+        executor.execute(() -> {
+            HttpsURLConnection connection = null;
+            try {
+                URL u = new URL(url);
+                connection = (HttpsURLConnection) u.openConnection();
+                connection.setRequestMethod("GET");
+                final int size = connection.getContentLength();
+                final String type = connection.getContentType();
+                handler.post(() -> {
+                    sizeText.setText(getString(R.string.label_size) + " " + size);
+                    typeText.setText(getString(R.string.label_type) + " " + type);
+                });
+            } catch (IOException e) {
+                handler.post(() -> Toast.makeText(MainActivity.this, R.string.fetch_error_toast, Toast.LENGTH_SHORT).show());
+            } finally {
+                if (connection != null) connection.disconnect();
             }
-            Phone updated = new Phone(manuf, model, ver, www);
-            updated.setId(id);
-            phoneVM.update(updated);
-            Toast.makeText(this,
-                    "Zaktualizowano telefon", Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void checkPermissionAndDownload() {
+        String requiredPermission = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requiredPermission = Manifest.permission.POST_NOTIFICATIONS;
+        } else if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            requiredPermission = Manifest.permission.WRITE_EXTERNAL_STORAGE;
         }
+        if (requiredPermission != null && ActivityCompat.checkSelfPermission(this, requiredPermission) != PackageManager.PERMISSION_GRANTED) {
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, requiredPermission)) {
+                Toast.makeText(this, "Potrzebne uprawnienie", Toast.LENGTH_SHORT).show();
+            }
+            requestPermissionLauncher.launch(requiredPermission);
+        } else {
+            startDownload();
+        }
+    }
+
+    private void startDownload() {
+        final String url = urlInput.getText().toString().trim();
+        if (TextUtils.isEmpty(url) || !url.startsWith("https://")) {
+            Toast.makeText(this, R.string.invalid_url_toast, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        String fileName = url.substring(url.lastIndexOf('/') + 1);
+        Intent intent = new Intent(this, DownloadService.class);
+        intent.putExtra(DownloadService.EXTRA_URL, url);
+        intent.putExtra(DownloadService.EXTRA_FILE_NAME, fileName);
+        startService(intent);
+    }
+
+    private void updateProgress(ProgressEvent event) {
+        lastProgress = event;
+        if (event == null) return;
+        progressBar.setMax(event.total);
+        progressBar.setProgress(event.progress);
+        progressText.setText(getString(R.string.label_progress) + " " + event.progress + "/" + event.total);
     }
 }
