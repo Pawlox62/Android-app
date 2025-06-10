@@ -18,6 +18,8 @@ import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.core.app.TaskStackBuilder;
+import android.app.PendingIntent;
 import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
@@ -82,14 +84,22 @@ public class DownloadService extends Service {
         }
     }
 
-    private Notification buildNotification(int progress, int total, boolean ongoing) {
+    private Notification buildNotification(ProgressEvent event, boolean ongoing) {
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.putExtra("progress", event);
+        PendingIntent pendingIntent = TaskStackBuilder.create(this)
+                .addNextIntentWithParentStack(notificationIntent)
+                .getPendingIntent(0, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setProgress(total, progress, total == 0)
+                .setProgress(event.total, event.progress, event.total == 0)
+                .setContentIntent(pendingIntent)
                 .setOngoing(ongoing);
-        if (progress >= total && total > 0) {
+        if (event.progress >= event.total && event.total > 0) {
             builder.setContentTitle(getString(R.string.notification_text_finished))
-                    .setOngoing(false);
+                    .setOngoing(false)
+                    .setAutoCancel(true);
         } else {
             builder.setContentTitle(getString(R.string.notification_title_downloading));
         }
@@ -103,14 +113,17 @@ public class DownloadService extends Service {
         Uri fileUri = null;
         int downloaded = 0;
         int total = 0;
+        ProgressEvent lastEvent = null;
         try {
             URL url = new URL(urlStr);
             connection = (HttpsURLConnection) url.openConnection();
             connection.setRequestMethod("GET");
             connection.connect();
             total = connection.getContentLength();
-            progressLiveData.postValue(new ProgressEvent(0, total, ProgressEvent.IN_PROGRESS));
-            startForeground(NOTIFICATION_ID, buildNotification(0, total, true));
+            ProgressEvent startEvent = new ProgressEvent(0, total, ProgressEvent.IN_PROGRESS);
+            lastEvent = startEvent;
+            progressLiveData.postValue(startEvent);
+            startForeground(NOTIFICATION_ID, buildNotification(startEvent, true));
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 ContentResolver resolver = getContentResolver();
                 ContentValues values = new ContentValues();
@@ -132,17 +145,26 @@ public class DownloadService extends Service {
             while ((read = reader.read(buffer)) != -1) {
                 outputStream.write(buffer, 0, read);
                 downloaded += read;
-                progressLiveData.postValue(new ProgressEvent(downloaded, total, ProgressEvent.IN_PROGRESS));
-                notificationManager.notify(NOTIFICATION_ID, buildNotification(downloaded, total, true));
+                ProgressEvent progressEvent = new ProgressEvent(downloaded, total, ProgressEvent.IN_PROGRESS);
+                lastEvent = progressEvent;
+                progressLiveData.postValue(progressEvent);
+                Log.d(TAG, "downloaded " + downloaded + "/" + total);
+                notificationManager.notify(NOTIFICATION_ID, buildNotification(progressEvent, true));
             }
-            progressLiveData.postValue(new ProgressEvent(downloaded, total, ProgressEvent.OK));
+            ProgressEvent finishedEvent = new ProgressEvent(downloaded, total, ProgressEvent.OK);
+            lastEvent = finishedEvent;
+            progressLiveData.postValue(finishedEvent);
+            Log.d(TAG, "download complete");
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && fileUri != null) {
                 ContentValues values = new ContentValues();
                 values.put(MediaStore.Downloads.IS_PENDING, 0);
                 getContentResolver().update(fileUri, values, null, null);
             }
         } catch (Exception e) {
-            progressLiveData.postValue(new ProgressEvent(downloaded, total, ProgressEvent.ERROR));
+            ProgressEvent errorEvent = new ProgressEvent(downloaded, total, ProgressEvent.ERROR);
+            lastEvent = errorEvent;
+            progressLiveData.postValue(errorEvent);
+            Log.d(TAG, "download error", e);
             Log.e(TAG, "downloadFile", e);
         } finally {
             try {
@@ -150,7 +172,10 @@ public class DownloadService extends Service {
             } catch (IOException ignore) {}
             if (connection != null) connection.disconnect();
             stopForeground(STOP_FOREGROUND_DETACH);
-            notificationManager.notify(NOTIFICATION_ID, buildNotification(downloaded, total, false));
+            if (lastEvent == null) {
+                lastEvent = new ProgressEvent(downloaded, total, ProgressEvent.ERROR);
+            }
+            notificationManager.notify(NOTIFICATION_ID, buildNotification(lastEvent, false));
             stopSelf();
         }
     }
