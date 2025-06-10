@@ -33,6 +33,7 @@ import java.io.IOException;
 import java.net.URL;
 
 public class MainActivity extends AppCompatActivity {
+    public static final String EXTRA_PROGRESS = "progress";
 
     private EditText urlInput;
     private TextView sizeText;
@@ -82,7 +83,16 @@ public class MainActivity extends AppCompatActivity {
         Button btnDownload = findViewById(R.id.btnDownload);
 
         if (savedInstanceState != null) {
-            lastProgress = savedInstanceState.getParcelable("progress");
+            lastProgress = savedInstanceState.getParcelable(EXTRA_PROGRESS);
+            if (lastProgress != null) updateProgress(lastProgress);
+            String sizeVal = savedInstanceState.getString("sizeText");
+            String typeVal = savedInstanceState.getString("typeText");
+            String urlVal = savedInstanceState.getString("urlText");
+            if (sizeVal != null) sizeText.setText(sizeVal);
+            if (typeVal != null) typeText.setText(typeVal);
+            if (urlVal != null) urlInput.setText(urlVal);
+        } else if (getIntent().hasExtra(EXTRA_PROGRESS)) {
+            lastProgress = getIntent().getParcelableExtra(EXTRA_PROGRESS);
             if (lastProgress != null) updateProgress(lastProgress);
         }
 
@@ -106,7 +116,10 @@ public class MainActivity extends AppCompatActivity {
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         if (lastProgress != null)
-            outState.putParcelable("progress", lastProgress);
+            outState.putParcelable(EXTRA_PROGRESS, lastProgress);
+        outState.putString("sizeText", sizeText.getText().toString());
+        outState.putString("typeText", typeText.getText().toString());
+        outState.putString("urlText", urlInput.getText().toString());
     }
 
     private void fetchInfo() {
