@@ -2,8 +2,9 @@
     <style name="Base.Theme.Lab3" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorOnPrimary">@color/colorOnPrimary</item>
-        <item name="statusBarColor">@color/colorPrimary</item>
-        <item name="navigationBarColor">@color/colorPrimary</item>
+        <!-- Prefix built-in bar color attributes with the android namespace -->
+        <item name="android:statusBarColor">@color/colorPrimary</item>
+        <item name="android:navigationBarColor">@color/colorPrimary</item>
     </style>
 
     <style name="Theme.Lab3" parent="Base.Theme.Lab3" />
