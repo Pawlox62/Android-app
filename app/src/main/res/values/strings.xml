@@ -15,4 +15,8 @@
     <string name="website">WWW</string>
     <string name="edit_phone_title">Edytuj telefon</string>
     <string name="all_deleted_toast">Usunięto wszystkie telefony</string>
+    <string name="file_info_title">Informacje o pliku</string>
+    <string name="btn_fetch">Pobierz informacje</string>
+    <string name="invalid_url_toast">Niepoprawny adres URL</string>
+    <string name="fetch_error_toast">Błąd pobierania danych</string>
 </resources>

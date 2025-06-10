@@ -37,10 +37,13 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public boolean onOptionsItemSelected(MenuItem item) {
-        if (item.getItemId() == R.id.action_delete_all) {
-            // Usuń wszystkie
+        int id = item.getItemId();
+        if (id == R.id.action_delete_all) {
             phoneVM.deleteAll();
             Toast.makeText(this, R.string.all_deleted_toast, Toast.LENGTH_SHORT).show();
+            return true;
+        } else if (id == R.id.action_file_info) {
+            startActivity(new Intent(this, com.example.lab3.network.FileInfoActivity.class));
             return true;
         }
         return super.onOptionsItemSelected(item);
