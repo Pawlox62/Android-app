@@ -139,8 +139,8 @@ public class MainActivity extends AppCompatActivity {
                 final int size = connection.getContentLength();
                 final String type = connection.getContentType();
                 handler.post(() -> {
-                    sizeText.setText(getString(R.string.label_size) + " " + size);
-                    typeText.setText(getString(R.string.label_type) + " " + type);
+                    sizeText.setText(String.valueOf(size));
+                    typeText.setText(type);
                 });
             } catch (IOException e) {
                 handler.post(() -> Toast.makeText(MainActivity.this, R.string.fetch_error_toast, Toast.LENGTH_SHORT).show());
@@ -185,6 +185,6 @@ public class MainActivity extends AppCompatActivity {
         if (event == null) return;
         progressBar.setMax(event.total);
         progressBar.setProgress(event.progress);
-        progressText.setText(getString(R.string.label_progress) + " " + event.progress + "/" + event.total);
+        progressText.setText(event.progress + "/" + event.total);
     }
 }
