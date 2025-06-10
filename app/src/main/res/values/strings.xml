@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Lab3 Peterwas</string>
+    <string name="menu_delete_all">Usuń wszystkie</string>
+    <string name="add_phone_title">Dodaj telefon</string>
+    <string name="manufacturer_label">Producent:</string>
+    <string name="manufacturer_hint">np. Samsung</string>
+    <string name="model_label">Model:</string>
+    <string name="model_hint">np. Galaxy S21</string>
+    <string name="android_version_label">Android:</string>
+    <string name="android_version_hint">np. 12.0</string>
+    <string name="website_label">Strona WWW:</string>
+    <string name="website_hint">np. http://...</string>
+    <string name="save">Zapisz</string>
+    <string name="cancel">Anuluj</string>
+    <string name="website">WWW</string>
+    <string name="edit_phone_title">Edytuj telefon</string>
+    <string name="all_deleted_toast">Usunięto wszystkie telefony</string>
+</resources>
