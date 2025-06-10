@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Lab3 Peterwas</string>
+    <string name="app_name">Lab4 Peterwas</string>
     <string name="btn_fetch">Pobierz informacje</string>
     <string name="btn_download">Pobierz plik</string>
     <string name="invalid_url_toast">Niepoprawny adres URL</string>
